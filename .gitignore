@@ -2,9 +2,3 @@
 .venv/
 __pycache__/
 .pytest_cache/
-.idea
-
-# data/ es de trabajo: se versionan sus carpetas vacías, nunca su contenido
-data/**
-!data/*/
-!data/*/.gitkeep
