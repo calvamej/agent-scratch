@@ -19,3 +19,4 @@ def build_credential(provider: AuthProvider, api_key: SecretStr) -> Credential:
         case AuthProvider.ENTRA_ID:
             # az login en local, Managed Identity desplegado
             return get_bearer_token_provider(DefaultAzureCredential(), ENTRA_SCOPE)
+
