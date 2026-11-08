@@ -44,7 +44,7 @@ class IngestSettings(_EnvSettings):
 
 class Settings(_EnvSettings):
     # cada tema agrega su bloque: T2 ingest y search, T3 mcp, T4 cosmos y otel
-    domain: str = "fraud"
+    domain: str = "loans"
     max_turns: int = Field(10, ge=1)
     foundry: FoundrySettings = Field(default_factory=FoundrySettings)
     ingest: IngestSettings = Field(default_factory=IngestSettings)
