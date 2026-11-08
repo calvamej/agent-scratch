@@ -1,0 +1,86 @@
+[
+  {
+    "source": "application-cases.pdf",
+    "doc_type": "cases",
+    "product": null,
+    "valid_from": "2025-01-01",
+    "valid_until": null
+  },
+  {
+    "source": "documents-by-worker-type.html",
+    "doc_type": "requirements",
+    "product": null,
+    "valid_from": "2025-01-01",
+    "valid_until": null
+  },
+  {
+    "source": "installment-formula.md",
+    "doc_type": "guide",
+    "product": "personal",
+    "valid_from": "2025-01-01",
+    "valid_until": null
+  },
+  {
+    "source": "internal-notice-training.html",
+    "doc_type": "notice",
+    "product": null,
+    "valid_from": "2025-05-01",
+    "valid_until": null
+  },
+  {
+    "source": "loans-faq.md",
+    "doc_type": "faq",
+    "product": null,
+    "valid_from": "2025-01-01",
+    "valid_until": null
+  },
+  {
+    "source": "loans-glossary.md",
+    "doc_type": "glossary",
+    "product": null,
+    "valid_from": "2025-01-01",
+    "valid_until": null
+  },
+  {
+    "source": "mortgage.html",
+    "doc_type": "terms",
+    "product": "hipotecario",
+    "valid_from": "2025-01-01",
+    "valid_until": null
+  },
+  {
+    "source": "personal-loan-requirements.pdf",
+    "doc_type": "requirements",
+    "product": "personal",
+    "valid_from": "2025-01-01",
+    "valid_until": null
+  },
+  {
+    "source": "personal-loan-terms-2023.md",
+    "doc_type": "terms",
+    "product": "personal",
+    "valid_from": "2023-01-01",
+    "valid_until": "2024-12-31"
+  },
+  {
+    "source": "personal-loan-terms.docx",
+    "doc_type": "terms",
+    "product": "personal",
+    "valid_from": "2025-01-01",
+    "valid_until": null
+  },
+  {
+    "source": "prepayment-and-payoff.md",
+    "doc_type": "procedure",
+    "product": null,
+    "valid_from": "2025-01-01",
+    "valid_until": null
+  },
+  {
+    "source": "sample-simulations.csv",
+    "doc_type": "table",
+    "product": "personal",
+    "valid_from": "2025-01-01",
+    "valid_until": null
+  }
+]
