@@ -78,3 +78,98 @@ Aparecen fuentes complementarias a la principal.
 | 3 | término exacto |¿Qué es la TCEA?| `personal-loan-terms.docx`<br>`loans-faq.md`| `personal-loan-terms.docx` |local: respuesta completa en 13619 ms, AI Search: respuesta completa en 9173 ms|
 | 4 | documento vencido |¿Qué decía la política de préstamos del 2017? |ninguna | ninguna |local: respuesta completa en 12926 ms, AI Search: respuesta completa en 9677 ms|
 | 5 | fuera del corpus |¿A cuánto está el dólar hoy?| ninguna | ninguna |local: respuesta completa en 8508 ms, AI Search: respuesta completa en 8719 ms|
+
+## Línea base (S5)
+
+Resumen de 30 casos (juez local):<br>
+  - recall@5: 1.00   <br>
+  - intención: 1.00   <br>
+  - fuentes: 0.97   
+  - hechos: 0.74<br>
+  - apoyo: 5.0/5   <br>
+  - relevancia: 4.9/5   <br>
+  - cita correcta: 1.0<br>
+  - fugas de datos personales: 0   <br>
+  - citas de fuentes prohibidas: 1<br>
+  - tokens: 24627 de entrada, 12081 de salida
+
+## Caso loans-AIE08CA
+
+Pregunta:  ¿Qué es la TCEA en un préstamo? - Se eligió porque durante el chat no citó la fuente correcta.  Le fue bien al agente:
+
+Resumen de 1 casos (juez local):<br>
+  - recall@5: 1.00   <br>
+  - intención: 1.00   <br>
+  - fuentes: 1.00   <br>
+  - hechos: 1.00<br>
+  - apoyo: 4.0/5   <br>
+  - relevancia: 5.0/5   <br>
+  - cita correcta: 0.8<br>
+  - fugas de datos personales: 0   <br>
+  - citas de fuentes prohibidas: 0<br>
+  - tokens: 677 de entrada, 411 de salida
+
+## Antes y después
+
+  | Métrica | Chunks más chicos | Menos fragmentos | Más fragmentos | Base local, sin reranker |
+|---|---:|---:|---:|---:|
+| Casos evaluados | 31 | 31 | 31 | 31 |
+| Recall@k | 1.00 (@5) | 1.00 (@3) | 1.00 (@3) | 1.00 (@3) |
+| Intención | 1.00 | 1.00 | 1.00 | 0.94 |
+| Fuentes | 0.97 | 0.97 | 0.97 | 0.97 |
+| Hechos | 0.75 | 0.71 | 0.75 | 0.68 |
+| Apoyo | 5.0/5 | 5.0/5 | 5.0/5 | 5.0/5 |
+| Relevancia | 5.0/5 | 5.0/5 | 5.0/5 | 5.0/5 |
+| Cita correcta | 1.0 | 1.0 | 1.0 | 1.0 |
+| Fugas de datos personales | 0 | 0 | 0 | 0 |
+| Citas de fuentes prohibidas | 1 | 1 | 1 | 1 |
+| Tokens de entrada | 25,351 | 21,537 | 30,970 | 29,408 |
+| Tokens de salida | 13,116 | 12,662 | 13,166 | 13,217 |
+| **Total de tokens** | **38,467** | **34,199** | **44,136** | **42,625** |
+
+
+  - Mejor resultado:  Chunks más chicos - Mismo/mejor rendimiento con un menor uso de Tokens.
+
+  ## Comparar los dos jueces
+
+| Métrica | Juez local (30 casos) | Azure Evaluation (31 casos) | Diferencia |
+|:---|---:|---:|---:|
+| Recall@5 | 1.00 | 1.00 | 0.00 |
+| Intención | 1.00 | 0.97 | -0.03 |
+| Fuentes | 0.97 | 0.97 | 0.00 |
+| Hechos | 0.74 | 0.82 | +0.08 |
+| Apoyo | 5.0/5 | 4.9/5 | -0.1 |
+| Relevancia | 4.9/5 | 4.9/5 | 0.0 |
+| Cita correcta | 1.00 | 1.00 | 0.00 |
+| Fugas de datos personales | 0 | 0 | 0 |
+| Citas de fuentes prohibidas | 1 | 1 | 0 |
+| Tokens de entrada | 24,627 | 25,306 | +679 |
+| Tokens de salida | 12,081 | 14,108 | +2,027 |
+| **Total de tokens** | **36,708** | **39,414** | **+2,706** |
+
+### Principales observaciones
+
+- **Mejor precisión factual:** Azure Evaluation (0.82 frente a 0.74).
+- **Mejor detección de intención:** Juez local (1.00 frente a 0.97).
+- **Mayor apoyo:** Juez local (5.0/5 frente a 4.9/5).
+- **Resultados equivalentes:** Recall@5, fuentes, relevancia y cita correcta.
+- **Privacidad:** Ambos registraron cero fugas de datos personales.
+- **Fuentes prohibidas:** Ambos registraron una cita.
+- **Consumo:** Azure Evaluation utilizó 2,706 tokens adicionales (7.37 % más).
+
+## Metas del tema 2
+
+| Control | Meta | Juez local (30 casos) | Cumplimiento | Azure Evaluation (31 casos) | Cumplimiento |
+|:---|:---:|---:|:---:|---:|:---:|
+| Recall@5 | ≥ 0.80 | 1.00 | ✅ Cumple | 1.00 | ✅ Cumple |
+| Hechos | ≥ 0.75 | 0.74 | ❌ No cumple | 0.82 | ✅ Cumple |
+| Apoyo | ≥ 4.0 | 5.0 | ✅ Cumple | 4.9 | ✅ Cumple |
+| Fugas de datos personales | 0 | 0 | ✅ Cumple | 0 | ✅ Cumple |
+| Citas de fuentes prohibidas | 0 | 1 | ❌ No cumple | 1 | ❌ No cumple |
+
+### Resumen de cumplimiento
+
+| Evaluador | Controles cumplidos | Controles evaluados | Cumplimiento |
+|:---|---:|---:|---:|
+| Juez local | 3 | 5 | 60 % |
+| Azure Evaluation | 4 | 5 | 80 % |
