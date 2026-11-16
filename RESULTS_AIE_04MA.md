@@ -196,3 +196,90 @@ Sesión: nueva.
 - **Primer texto contra respuesta completa:** casi coinciden (la diferencia es de 12 a 257 ms). El tiempo lo domina la llamada al modelo y el texto llega casi de una vez, en 17 a 100 eventos.
 - **Tiempos del cliente contra latencia del modelo:** el cliente mide más que la latencia que reporta el agente (por ejemplo, 5454 ms contra 4285 ms en la pregunta 1 de Azure). La diferencia corresponde al tiempo fuera de la llamada al modelo. No se midió qué parte es la búsqueda.
 
+
+# Línea base (S5)
+
+Resumen de 30 casos (juez local):
+
+```
+recall@5: 1.00   intención: 1.00   fuentes: 0.97   hechos: 0.81
+apoyo: 5.0/5   relevancia: 5.0/5   cita correcta: 1.0
+fugas de datos personales: 0   citas de fuentes prohibidas: 1
+tokens: 24637 de entrada, 12976 de salida
+```
+
+## Mi caso del golden set (S5)
+
+```json
+{"id": "loans-AIE04MA", "type": "answerable", "history": [], "question": "En el crédito hipotecario, ¿puedo elegir mi propia aseguradora para el desgravamen?", "expected_intent": "product_question", "expected_sources": ["mortgage.html"], "forbidden_sources": [], "key_facts": ["endosar su seguro de vida"]}
+```
+
+### Por qué lo elegí
+
+- Los 30 casos base no cubren esta pregunta. Los casos de `mortgage.html` (`loans-12`, `13`, `14`, `18`) preguntan por el porcentaje de financiamiento, el plazo, qué seguros pide y la cuota máxima. Ninguno pregunta quién escoge la aseguradora.
+- Es una duda real de un cliente: tras saber que el desgravamen es obligatorio en el hipotecario, quiere saber si puede contratarlo donde quiera.
+- Mezcla dos temas cercanos: el desgravamen es obligatorio en el hipotecario y opcional en el préstamo personal. Sirve para ver si el agente confunde ambos productos. En la corrida de S4 (pregunta 3) el agente ya citó `personal-loan-terms.docx` y `mortgage.html` juntos al hablar de desgravamen.
+- La respuesta está en una sola frase de `mortgage.html` (sección "Seguros obligatorios"), así que se puede verificar con el dato `endosar su seguro de vida`, copiado tal cual del documento.
+
+### Cómo le fue al agente
+
+Resumen de 1 caso (juez local):
+
+```
+recall@5: 1.00   intención: 1.00   fuentes: 1.00   hechos: 1.00
+apoyo: 5.0/5   relevancia: 5.0/5   cita correcta: 1.0
+fugas de datos personales: 0   citas de fuentes prohibidas: 0
+tokens: 812 de entrada, 504 de salida
+```
+
+- **Respuesta del agente:** "Sí. En el crédito hipotecario el seguro de desgravamen es obligatorio, pero puede elegir la aseguradora o endosar su seguro de vida."
+- **Cita:** solo `mortgage.html`, la fuente esperada.
+- **Búsqueda:** `mortgage.html` quedó primero entre los 5 fragmentos recuperados. Los otros cuatro fueron `loans-faq.md`, `personal-loan-terms.docx` (dos fragmentos) y `personal-loan-requirements.pdf`. El agente no los citó y no mezcló la regla del préstamo personal.
+- **Juez:** la respuesta reproduce el fragmento de `mortgage.html` y responde la pregunta. Una llamada al modelo (`gpt-5-mini-2025-08-07`), 5359 ms de latencia.
+- **Límite:** es un caso fácil. La respuesta está en una sola frase y la reproduce casi literal, así que sirve para detectar regresiones y no para medir mejoras. Con una sola corrida no se sabe si el modelo siempre conserva la frase `endosar su seguro de vida`.
+
+## Cambios de uno en uno (S5)
+
+Cada fila cambia una sola cosa respecto de la corrida de referencia y se evalúa con `uv run eval` completo (31 casos: los 30 base y el mío, juez `local`, `azure_search`, `gpt-5-mini-2025-08-07`). Una corrida por fila.
+
+| # | Cambio | Cómo | recall | intención | fuentes | hechos | apoyo | relevancia | cita | fugas | prohibidas | tokens (entrada / salida) | Detalle |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | referencia | `INGEST_CHUNK_MAX_CHARS=1500`, `SEARCH_TOP_K=5`, `azure_search` | 1.00 | 1.00 | 0.97 | 0.71 | 5.0 | 5.0 | 1.0 | 0 | 1 | 25400 / 13419 | `loans-20261115-225028.json` |
+| 1 | menos fragmentos | `SEARCH_TOP_K=3` | 1.00 | 1.00 | 0.97 | 0.71 | 5.0 | 5.0 | 1.0 | 0 | 1 | 21532 / 12857 | `loans-20261115-225650.json` |
+| 2 | más fragmentos | `SEARCH_TOP_K=8` | 1.00 | 1.00 | 0.97 | 0.79 | 5.0 | 5.0 | 1.0 | 0 | 1 | 31080 / 13298 | `loans-20261115-230333.json` |
+| 3 | base local, sin reranker | `uv run ingest publish --target local` y `KNOWLEDGE_BASE=local` | 0.93 | 0.97 | 0.87 | 0.57 | 4.9 | 4.9 | 0.98 | 0 | 1 | 24233 / 14549 | `loans-20261115-231316.json` |
+| 4 | chunks más chicos | `INGEST_CHUNK_MAX_CHARS=800`, `uv run ingest build` y `uv run ingest publish` | 1.00 | 1.00 | 0.97 | 0.68 | 5.0 | 5.0 | 1.0 | 0 | 1 | 25479 / 12805 | `loans-20261115-232040.json` |
+
+El recall se mide en @k, con el k de cada fila (@5, @3, @8).
+
+La referencia da hechos 0.71 y la línea base de las 30 preguntas dio 0.81. La diferencia viene de mi caso (que ahora falla en hechos) y de la variación entre corridas, porque cambió el conjunto de casos y no la configuración.
+
+### Qué se vio en cada cambio
+
+- **Menos fragmentos (`SEARCH_TOP_K=3`):** recall, fuentes y hechos quedan igual que con 5. Los tokens de entrada bajan de 25400 a 21532 (-15 %). No se perdió ningún documento esperado entre los 3 primeros.
+- **Más fragmentos (`SEARCH_TOP_K=8`):** apoyo igual (5.0) y la cita prohibida de `loans-25` sigue (1, igual que con 5). Hechos sube a 0.79 y los tokens de entrada suben a 31080 (+22 %). El aumento en hechos no se puede atribuir a los fragmentos extra: los casos que fallan siguen siendo de formato (ver abajo) y la misma configuración varía entre 0.68 y 0.79 de una corrida a otra.
+- **Base local, sin reranker:** es el único cambio que empeora de forma clara. Recall baja de 1.00 a 0.93, fuentes de 0.97 a 0.87 y hechos de 0.71 a 0.57. Fallan sobre todo las preguntas que dependen de números en `sample-simulations.csv`: en `loans-11` y `loans-19` el CSV no aparece entre los 5 resultados y el agente responde con una cuota aproximada o dice que no está en los fragmentos; en `loans-11` la intención sale como `data_query`. El reranker de AI Search sí aporta aquí. Con un corpus de 29 chunks, la diferencia viene de la calidad de la búsqueda local y no de que falte contexto.
+- **Chunks de 800:** no cambia nada. `ingest build` generó los mismos 29 chunks con el mismo contenido que con 1500, porque el chunk más largo mide 304 caracteres. Las diferencias de la fila (hechos 0.68) son variación entre corridas, no efecto del tamaño. El tamaño de chunk solo importaría con documentos más largos que el corpus actual.
+
+### Casos que fallan en todas las filas
+
+- `loans-25` (noise): cita `internal-notice-training.html`. Es la cita prohibida (1) en todas las filas, también en la base local. No la mueve ni el top-k ni la base: es un problema del filtro de ruido o del prompt, no de la búsqueda.
+- Hechos: casi todos los NO son de formato (`14.9 %` contra `14.9%`, `S/ 1 500` contra `S/1,500`, "21 a 70 años" contra "entre 21 y 70 años"). Los casos concretos cambian de una corrida a otra, y eso explica la variación de hechos.
+
+### Qué elijo yo y por qué
+
+Cada integrante del equipo (somos 4) elige según su propio análisis. Esta es mi elección y no una decisión del equipo.
+
+**Elijo: `SEARCH_TOP_K=3`, `INGEST_CHUNK_MAX_CHARS=1500`, `KNOWLEDGE_BASE=azure_search` (con el reranker).**
+
+- Me quedo con `azure_search`: sin el reranker bajan recall, fuentes y hechos.
+- Elijo `SEARCH_TOP_K=3` porque da los mismos resultados que 5 con 15 % menos de tokens de entrada. Repetí esa configuración al final: recall@3 1.00, fuentes 0.97, hechos 0.71, apoyo 5.0, 21578 tokens de entrada. Con 8 solo suben los tokens.
+- Me quedo con 1500 en chunks: 800 no cambia nada con este corpus.
+- **Límite:** con 31 casos y una corrida por fila, diferencias de hechos de 0.1 caben dentro de la variación entre corridas. Que 3 y 5 den lo mismo en este golden set no garantiza que pase con un corpus más grande. Si se agregan documentos largos, hay que volver a evaluar. Esta configuración tampoco resuelve `loans-25` ni el formato de los hechos, que se arreglan con el prompt y el filtro, no con la configuración.
+
+### Estado al terminar
+
+- Variables de shell `INGEST_CHUNK_MAX_CHARS`, `SEARCH_TOP_K` y `KNOWLEDGE_BASE` borradas (`unset`).
+- `.env` queda con `INGEST_CHUNK_MAX_CHARS=1500`, `KNOWLEDGE_BASE=azure_search` y `SEARCH_TOP_K=3`.
+- Índice `idx-team-04` republicado con `INGEST_CHUNK_MAX_CHARS=1500`: 29 chunks, el mismo contenido que antes de las pruebas.
+- El índice local de `data/index/loans` quedó con los chunks de 1500 (publicados antes de la prueba de 800).
