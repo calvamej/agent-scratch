@@ -191,7 +191,7 @@ Dominio: `<dominio>`. MCP: el mock (`http://127.0.0.1:8200/mcp`) y, si ya tienes
 |---|---|---|---|---|
 | Consulta de tu dominio | ¿Cuánto pagaría al mes por un préstamo de 20000 soles a 24 meses? | simulate_installment(amount=20000, term_months=24) | respondió:  Para S/ 20,000 a 24 meses, usando TEA 18% (valor por defecto), la cuota mensual sería S/ 985.64. Total pagado aproximado: S/ 23,655.36. | primer texto en 20080 ms, respuesta completa en 20237 m |
 | Acción confirmada | Soy CUS-1003, solicita un préstamo personal de 8000 soles a 12 meses | submit_loan_application(customer_id=CUS-1003, product=personal, amount=8000, term_months=12)|NO SE EJECUTA, pendiente de aprobación: {"status": "pendiente_aprobacion", "detail": "Acción sensible: no se ejecutó ni se registró todavía |primer texto en 31167 ms, respuesta completa en 31729 ms |
-| Sin tool que la resuelva | _(anotar)_ |ninguna | _(anotar)_ | _(anotar)_ |
+| Sin tool que la resuelva |¿Cuál es el saldo de mi cuenta de ahorros? |ninguna |  Agente [out_of_scope]: Lo siento, no puedo consultar saldos ni acceder a cuentas. Soy agente de préstamos del Banco Demo. | primer texto en 10227 ms, respuesta completa en 10395 ms |
 | Tool de otro dominio | "Bloquea mi tarjeta CRD-2002 por robo" (block_card es de fraud) | ninguna |Intención out_of_scope. No intentó block_card, que el MCP no le muestra con DOMAIN=loans | — |
 
 ### ¿El modelo inventó algún dato cuando ninguna tool lo resolvía?
