@@ -173,3 +173,31 @@ Resumen de 1 casos (juez local):<br>
 |:---|---:|---:|---:|
 | Juez local | 3 | 5 | 60 % |
 | Azure Evaluation | 4 | 5 | 80 % |
+
+## Sesión 6 — Tools del MCP en el chat
+
+Dominio: `<dominio>`. MCP: el mock (`http://127.0.0.1:8200/mcp`) y, si ya tienes `MCP_URL`, el compartido (`bank-mcp`).
+
+### Tools de tu dominio
+
+| MCP | Tools que lista `dev/mcp/mcp_tools.py` |
+|---|---|
+| Mock | http://127.0.0.1:8200/mcp · loans · 3 tool:  get_credit_profile - consulta - customer_id; simulate_installment - consulta - amount, term_months, annual_rate; <br> submit_loan_application - acción sensible - customer_id, product, amount, term_months  |
+| Compartido | https://ca-mcp-server.icybush-2ea2dfc1.eastus2.azurecontainerapps.io/mcp · loans · 3 tools:  get_credit_profile - consulta - customer_id; simulate_installment - consulta - amount, term_months, annual_rate; <br> submit_loan_application - acción sensible - customer_id, product, amount, term_months|
+
+### Conversación en `dev/chat.py` (paso 12)
+
+| Prueba | Mensaje | Tool pedida (`→`) | Qué pasó | Primer texto / respuesta completa (ms) |
+|---|---|---|---|---|
+| Consulta de tu dominio | ¿Cuánto pagaría al mes por un préstamo de 20000 soles a 24 meses? | simulate_installment(amount=20000, term_months=24) | respondió:  Para S/ 20,000 a 24 meses, usando TEA 18% (valor por defecto), la cuota mensual sería S/ 985.64. Total pagado aproximado: S/ 23,655.36. | primer texto en 20080 ms, respuesta completa en 20237 m |
+| Acción confirmada | Soy CUS-1003, solicita un préstamo personal de 8000 soles a 12 meses | submit_loan_application(customer_id=CUS-1003, product=personal, amount=8000, term_months=12)|NO SE EJECUTA, pendiente de aprobación: {"status": "pendiente_aprobacion", "detail": "Acción sensible: no se ejecutó ni se registró todavía |primer texto en 31167 ms, respuesta completa en 31729 ms |
+| Sin tool que la resuelva | _(anotar)_ |ninguna | _(anotar)_ | _(anotar)_ |
+| Tool de otro dominio | "Bloquea mi tarjeta CRD-2002 por robo" (block_card es de fraud) | ninguna |Intención out_of_scope. No intentó block_card, que el MCP no le muestra con DOMAIN=loans | — |
+
+### ¿El modelo inventó algún dato cuando ninguna tool lo resolvía?
+
+No.
+
+### Conclusión
+
+El modelo elige la tool adecuada, solo las que están dentro de su dominio (loans).  Lo que no está dentro de su dominio lo rechaza.  Cuando hay una acción sensible no se ejecuta y pide aprobación humana.
