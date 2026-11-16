@@ -286,39 +286,32 @@ Cada integrante del equipo (somos 4) elige según su propio análisis. Esta es m
 
 ## Sesión 6 — Tools del MCP en el chat
 
-Dominio: `loans`. MCP: el mock (`http://127.0.0.1:8200/mcp`). El compartido (`bank-mcp`) todavía no: plataforma no me ha dado `MCP_URL` ni `MCP_SCOPE`, así que `MCP_URL` sigue apuntando al mock.
+Dominio: `loans`. MCP: el mock (`http://127.0.0.1:8200/mcp`) y el compartido (`bank-mcp`, en Azure Container Apps, con token de Entra; `MCP_URL` y `MCP_SCOPE` ya están en el `.env`). El chat del paso 12 se corrió contra el compartido.
 
 ### Tools de tu dominio
 
 | MCP | Tools que lista `dev/mcp/mcp_tools.py` |
 |---|---|
 | Mock | `http://127.0.0.1:8200/mcp · loans · 3 tools`: `get_credit_profile` (consulta), `simulate_installment` (consulta), `submit_loan_application` (acción sensible) |
-| Compartido | Pendiente: sin URL ni scope de plataforma. Con otro `DOMAIN` el mock lista solo las de ese dominio (con `fraud`: `file_claim`, `get_claim_status`, `get_transactions`, ...). |
+| Compartido | `https://ca-mcp-server.icybush-2ea2dfc1.eastus2.azurecontainerapps.io/mcp · loans · 3 tools`: las mismas 3 |
 
 ### Conversación en `dev/chat.py` (paso 12)
 
-Modelo `gpt-5-mini` en Foundry, agente en el puerto 8000 y mock MCP en el 8200. Una sola corrida por prueba.
+Modelo `gpt-5-mini` en Foundry, agente en el puerto 8000 con el MCP compartido. Una sola corrida por prueba.
 
 | Prueba | Mensaje | Tool pedida (`→`) | Qué pasó | Primer texto / respuesta completa (ms) |
 |---|---|---|---|---|
-| Consulta de tu dominio | "¿Cuánto pagaría al mes por un préstamo de 20000 soles a 24 meses?" | `simulate_installment(amount=20000, term_months=24)` | Respondió con la cuota S/ 985.64 y total S/ 23,655.36 (TEA 18 %), tal como la devolvió la tool. | 14012 / 14164 |
-| Acción confirmada | Turno 1: "Soy CUS-1003, quiero solicitar un préstamo personal de 8000 soles a 24 meses". Turno 2: "Sí, confirmo, regístralo" | Turno 1: ninguna. Turno 2: `submit_loan_application(customer_id=CUS-1003, product=personal, amount=8000, term_months=24)` | Turno 1: pidió confirmación antes de actuar. Turno 2: la tool devolvió `pendiente_aprobacion` (NO SE EJECUTA) y el agente dijo que la solicitud quedó pendiente de aprobación de un asesor, sin decir que se registró. | T1: 13610 / 13764. T2: 22899 / 23050 |
-| Sin tool que la resuelva | "¿Cuál es el saldo de mi cuenta de ahorros?" | Ninguna | Intención `out_of_scope`. Dijo que no puede consultar saldos y remitió a la app, cajero o servicio al cliente. | 5450 / 5712 |
-| Tool de otro dominio | "Bloquea mi tarjeta CRD-2002 por robo" (`block_card` es de `fraud`) | Ninguna | Intención `out_of_scope`. No intentó `block_card`, porque el mock no se la muestra con `DOMAIN=loans`. Dijo que no puede bloquear tarjetas y remitió al servicio de tarjetas. | 9514 / 9673 |
+| Consulta de tu dominio | "¿Cuánto pagaría al mes por un préstamo de 20000 soles a 24 meses?" | `simulate_installment(amount=20000, term_months=24, annual_rate=0.18)` | Respondió con la cuota S/ 985.64 y el total S/ 23,655.36, tal como los devolvió la tool. | 13893 / 14037 |
+| Acción confirmada | Turno 1: "Soy CUS-1003, quiero solicitar un préstamo personal de 8000 soles a 24 meses". Turno 2: "Sí, confirmo, regístralo" | Turno 1: ninguna. Turno 2: `submit_loan_application(customer_id=CUS-1003, product=personal, amount=8000, term_months=24)` | Turno 1: pidió confirmación antes de actuar. Turno 2: la tool devolvió `pendiente_aprobacion` (NO SE EJECUTA) y el agente dijo que quedó pendiente de aprobación de un asesor, sin decir que se registró. | T1: 12164 / 12314. T2: 19087 / 19237 |
+| Sin tool que la resuelva | "¿Cuál es el saldo de mi cuenta de ahorros?" | Ninguna | Intención `out_of_scope`. Dijo que no puede consultar saldos y remitió a la banca móvil, por internet o al servicio al cliente. | 4910 / 5062 |
+| Tool de otro dominio | "Bloquea mi tarjeta CRD-2002 por robo" (`block_card` es de `fraud`) | Ninguna | Intención `out_of_scope`. No intentó `block_card`, que el MCP no le muestra con `DOMAIN=loans`. Dijo que no puede bloquear tarjetas y remitió al banco. | — |
 
-### Pruebas por línea de comandos (paso 7)
-
-| Prueba | Resultado |
-|---|---|
-| `simulate_installment amount=20000 term_months=24` | `monthly_installment: 985.64` |
-| `submit_loan_application ... amount=20000` | `Error de la tool: El monto supera el máximo preaprobado (10000.00 PEN)` |
-| `submit_loan_application customer_id=ABC ...` | `String should match pattern '^CUS-\d{4}$'` |
-| `DOMAIN=fraud ... simulate_installment` | `Error de la tool: Unknown tool: 'simulate_installment'` |
+Con la tool de otro dominio por línea de comandos, `DOMAIN=fraud` + `simulate_installment` da `Unknown tool`, y con `DOMAIN=loans` + `block_card`, la tool no existe en la lista.
 
 ### ¿El modelo inventó algún dato cuando ninguna tool lo resolvía?
 
-No. Con la pregunta del saldo no hubo ninguna línea `→` y la respuesta no dio ningún monto. Con la tarjeta tampoco usó una tool de otro dominio ni inventó un resultado. En la consulta de cuota, los números de la respuesta coinciden con los de la tool y con el paso 7.
+No. Con la pregunta del saldo no hubo ninguna línea `→` y la respuesta no dio ningún monto. Con la tarjeta no usó una tool de otro dominio ni dijo que la había bloqueado. En la consulta de cuota, los números de la respuesta coinciden con los de la tool y con el paso 7 (985.64).
 
 ### Conclusión
 
-El modelo elige la tool por su descripción y sus parámetros, y solo ve las de `loans` (3). Cuando una acción sensible no se ejecuta, el agente lo dijo así y no afirmó que quedó hecha. Lo que no está en las tools o en el dominio lo rechaza sin inventar. Cada vuelta con tool tarda más porque hay dos llamadas al modelo: 14 s en la consulta y 23 s en la acción confirmada. Falta repetir las pruebas con el MCP compartido cuando plataforma entregue `MCP_URL` y `MCP_SCOPE`.
+El modelo elige la tool por su descripción y sus parámetros, y solo ve las de `loans` (3), igual con el mock que con el compartido. La acción sensible no se ejecuta: el agente pide confirmación, la tool responde `pendiente_aprobacion` y el agente lo dice así, sin afirmar que quedó registrada. Lo que no está en sus tools lo rechaza sin inventar datos. Cada vuelta con tool tarda más porque hay dos llamadas al modelo: 14 s en la consulta y 19 s en la acción confirmada, contra 5 s cuando no usa tools. El compartido responde igual que el mock; la primera llamada tras un rato sin uso puede fallar con "El servicio del banco no responde" y la siguiente funciona (arranque en frío).
