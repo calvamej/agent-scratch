@@ -201,3 +201,28 @@ No.
 ### Conclusión
 
 El modelo elige la tool adecuada, solo las que están dentro de su dominio (loans).  Lo que no está dentro de su dominio lo rechaza.  Cuando hay una acción sensible no se ejecuta y pide aprobación humana.
+
+## Sesión 7 — Skills, memoria de trabajo y Agent Framework
+
+Dominio: `loans`. La misma conversación con los dos runtimes (paso 7).
+
+| | `react` | `agent_framework` |
+|---|---|---|
+| Tools pedidas en la consulta | → simulate_installment(amount=20000, term_months=24) | → simulate_installment(amount=20000, term_months=24) |
+| La acción sensible quedó **NO SE EJECUTA** | Sí:  NO SE EJECUTA, pendiente de aprobación: {"status": "pendiente_aprobacion", "detail": "Acción sensible}| Sí:  NO SE EJECUTA, pendiente de aprobación: {"status": "pendiente_aprobacion", "detail": "Acción sensible}|
+| Pregunta de memoria respondida sin `→` | Sí:  Agente [data_query]: La cuota que te simulé fue S/985.64 mensuales para S/20,000 a 24 meses (TEA 18%). |Sí:  Agente [data_query]: La cuota mensual fue S/ 985.64. Total pagado aproximado S/ 23,655.36.|
+| Primer texto (ms) |En la consulta:  primer texto en 25321 ms. |En la consulta:  primer texto en 12404 ms. |
+| Respuesta completa (ms) | En la consulta:  respuesta completa en 25441 ms. | En la consulta:  respuesta completa en 12533 ms. |
+| Tokens (entrada / salida) | En la consulta:  3244 tokens de entrada, 815 de salida.  | En la consulta:  3279 tokens de entrada, 697 de salida. |
+
+### ¿La skill frenó la tool de otro dominio?
+
+Mensaje: Agente [out_of_scope]: Eso está fuera de mi área (me especializo en préstamos). Respuesta: El modelo es quien explica que no puede.
+
+### Diferencias entre los dos runtimes
+
+Ninguna significativa más allá del tiempo del primer texto/respuesta completa que puede haber sido circunstancial.
+
+### Conclusión
+
+No se visualizan diferencias significativas entre ambos runtimes (agent_framework y react).  Los skills son instrucciones reutilizables que el agente puede consultar, como en este caso, cuando el usuario quiere utilizar una tool de otro dominio (aunque el MCP tampoco lo deja proceder).
