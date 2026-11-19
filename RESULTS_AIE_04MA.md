@@ -318,27 +318,31 @@ El modelo elige la tool por su descripción y sus parámetros, y solo ve las de 
 
 ## Sesión 7 — Skills, memoria de trabajo y Agent Framework
 
-Dominio: `loans`. La misma conversación con los dos runtimes (paso 7), con `gpt-5-mini` en Foundry y el MCP compartido (`3 tools: simulate_installment, get_credit_profile, submit_loan_application`). Mensajes, en una sola sesión: la consulta ("¿Cuánto pagaría al mes por un préstamo de 20000 soles a 24 meses?"), la solicitud ("Soy CUS-1003, quiero solicitar un préstamo personal de 8000 soles a 24 meses"), la confirmación ("Sí, confirmo, regístralo"), lo que ninguna tool resuelve ("¿Cuál es el saldo de mi cuenta de ahorros?"), la pregunta de memoria ("¿Cuánta era la cuota que me simulaste?") y la tool de otro dominio. Una sola corrida por runtime. En los tiempos y tokens, el primer valor es la consulta y el segundo la acción confirmada.
+Dominio: `loans`. La misma conversación con los dos runtimes (paso 7).
 
 | | `react` | `agent_framework` |
 |---|---|---|
-| Tools pedidas en la consulta | `simulate_installment(amount=20000, term_months=24)` → cuota 985.64 | `simulate_installment(amount=20000, term_months=24)` → cuota 985.64 |
-| La acción sensible quedó **NO SE EJECUTA** | Sí, pero ya en la solicitud (turno 2) pidió `get_credit_profile` y `submit_loan_application` sin esperar la confirmación, y dijo "He registrado la solicitud". En la confirmación la volvió a pedir: 2 veces NO SE EJECUTA | Sí. En la solicitud solo pidió `get_credit_profile` y preguntó si confirmaba. En la confirmación pidió `submit_loan_application` una vez, NO SE EJECUTA, y dijo "He solicitado el registro… queda pendiente de revisión por un asesor" |
-| Pregunta de memoria respondida sin `→` | Sin `→`, pero no respondió 985.64: intención `product_question`, "No encuentro esa simulación en los fragmentos proporcionados" | Sin `→`, pero no respondió 985.64: intención `product_question`, "Los fragmentos disponibles no incluyen la simulación de S/20,000 a 24 meses". Igual en una sesión nueva con la pregunta justo después de la simulación |
-| Primer texto (ms) | 14205 / 21698 | 11288 / 20169 |
-| Respuesta completa (ms) | 14377 / 21869 | 11448 / 20450 |
-| Tokens (entrada / salida) | 2933 / 554 · 4401 / 2424 | 2933 / 563 · 4238 / 2223 |
+| Tools pedidas en la consulta | `simulate_installment(amount=20000, term_months=24)` → 985.64 | `simulate_installment(amount=20000, term_months=24)` → 985.64 |
+| La acción sensible quedó **NO SE EJECUTA** | Sí. Pidió confirmación primero y `submit_loan_application` salió una vez, solo tras "Sí, confirmo" | Sí. Igual: confirmación primero y `submit_loan_application` una vez |
+| Pregunta de memoria respondida sin `→` | Sí: S/ 985.64 (`data_query`) | Sí: S/ 985.64 (`data_query`) |
+| Primer texto (ms) | 14228 / 17265 | 11433 / 20932 |
+| Respuesta completa (ms) | 14473 / 17458 | 11609 / 21125 |
+| Tokens (entrada / salida) | 2987 / 558 · 4278 / 1499 | 2987 / 744 · 4288 / 1939 |
 
-La memoria de trabajo sí funcionó en la acción confirmada: con los dos runtimes, `submit_loan_application` salió con `customer_id=CUS-1003`, `product=personal`, `amount=8000` y `term_months=24` sin un `→ get_credit_profile` previo en ese turno. Con lo que ninguna tool resuelve (el saldo), los dos respondieron `out_of_scope`, sin `→` y sin inventar montos.
+La confirmación salió con `CUS-1003`, `personal`, `8000` y `24` sin un `→ get_credit_profile` en ese turno: los datos vinieron de la memoria de trabajo. El saldo de ahorros quedó `out_of_scope`, sin `→` ni montos inventados.
+
+Ajuste respecto a la primera corrida: en esa, la pregunta de memoria caía en `product_question` y respondía "no está en los fragmentos", y con `react` se pidió `submit_loan_application` antes de confirmar. Se cambió el paso 3 de `skills/loans.md` para que el agente resuma la solicitud y pida `submit_loan_application` solo en el turno en que el cliente confirma.
 
 ### ¿La skill frenó la tool de otro dominio?
 
-Mensaje: "Bloquea mi tarjeta CRD-2001". Respuesta: con los dos runtimes, intención `out_of_scope` y ninguna línea `→`. `react`: "No puedo bloquear tarjetas desde aquí", y remitió a la Banca Móvil, la línea de atención o una sucursal. `agent_framework`: "No puedo bloquear tarjetas", con los mismos canales. El modelo no ve `block_card`: el MCP filtra por `DOMAIN=loans` y la skill `loans.md` solo deja pasar sus 3 tools.
+Sí.
+Mensaje: "Bloquea mi tarjeta CRD-2001". 
+Respuesta: `out_of_scope` sin `→` para los dos runtimes.
 
 ### Diferencias entre los dos runtimes
 
-Las tools, los argumentos, el resultado NO SE EJECUTA, el streaming y la respuesta fuera de alcance fueron iguales. Cambiar de runtime fue una línea del `.env` y reiniciar el agente. La diferencia de esta corrida fue en la solicitud del préstamo: con `react` el modelo pidió `submit_loan_application` antes de la confirmación y escribió "He registrado", y con `agent_framework` primero preguntó. Es una sola corrida y el modelo varía, así que lo atribuyo al modelo y no al runtime: los dos reciben los mismos mensajes, tools e instrucciones de `ChatService`. Los tiempos y tokens quedaron parecidos: 11 a 14 s el primer texto de la consulta y 20 a 22 s el de la acción confirmada.
+Ninguna en el comportamiento: mismas tools, mismos argumentos, NO SE EJECUTA, la misma respuesta de memoria y streaming en los dos. En tiempos, `agent_framework` dio el primer texto antes en la consulta (11.4 s contra 14.2 s) y después en la confirmación (20.9 s contra 17.3 s); con una corrida, no es una diferencia del runtime.
 
 ### Conclusión
 
-El harness es nuestro: `ChatService` decide qué tools ve el modelo (MCP + skill), cuántas vueltas da y qué pasa con la acción sensible, y por eso los dos runtimes se comportaron igual en lo que importa. Ninguna acción sensible se ejecutó. La memoria de trabajo sirvió para reusar los datos del cliente en la acción confirmada, pero la pregunta de memoria no dio lo esperable (985.64) con ninguno de los dos runtimes. El dato estaba en el historial; el modelo clasificó la pregunta como `product_question`, y el contexto del RAG le dice que en ese caso responda solo con los fragmentos del corpus, así que contestó que no los encontraba. El modelo con razonamiento tarda: entre 8 y 28 s por turno.
+Las reglas viven en el harness (`ChatService` y la skill), no en el runtime: por eso los dos se comportaron igual. La memoria de trabajo sirve para confirmar acciones y para repetir datos de tools sin volver a llamarlas. Con `gpt-5-mini`, cada turno tarda de 9 a 22 s.
