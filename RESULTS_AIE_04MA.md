@@ -315,3 +315,30 @@ No. Con la pregunta del saldo no hubo ninguna línea `→` y la respuesta no dio
 ### Conclusión
 
 El modelo elige la tool por su descripción y sus parámetros, y solo ve las de `loans` (3), igual con el mock que con el compartido. La acción sensible no se ejecuta: el agente pide confirmación, la tool responde `pendiente_aprobacion` y el agente lo dice así, sin afirmar que quedó registrada. Lo que no está en sus tools lo rechaza sin inventar datos. Cada vuelta con tool tarda más porque hay dos llamadas al modelo: 14 s en la consulta y 19 s en la acción confirmada, contra 5 s cuando no usa tools. El compartido responde igual que el mock; la primera llamada tras un rato sin uso puede fallar con "El servicio del banco no responde" y la siguiente funciona (arranque en frío).
+
+## Sesión 7 — Skills, memoria de trabajo y Agent Framework
+
+Dominio: `loans`. La misma conversación con los dos runtimes (paso 7), con `gpt-5-mini` en Foundry y el MCP compartido (`3 tools: simulate_installment, get_credit_profile, submit_loan_application`). Mensajes, en una sola sesión: la consulta ("¿Cuánto pagaría al mes por un préstamo de 20000 soles a 24 meses?"), la solicitud ("Soy CUS-1003, quiero solicitar un préstamo personal de 8000 soles a 24 meses"), la confirmación ("Sí, confirmo, regístralo"), lo que ninguna tool resuelve ("¿Cuál es el saldo de mi cuenta de ahorros?"), la pregunta de memoria ("¿Cuánta era la cuota que me simulaste?") y la tool de otro dominio. Una sola corrida por runtime. En los tiempos y tokens, el primer valor es la consulta y el segundo la acción confirmada.
+
+| | `react` | `agent_framework` |
+|---|---|---|
+| Tools pedidas en la consulta | `simulate_installment(amount=20000, term_months=24)` → cuota 985.64 | `simulate_installment(amount=20000, term_months=24)` → cuota 985.64 |
+| La acción sensible quedó **NO SE EJECUTA** | Sí, pero ya en la solicitud (turno 2) pidió `get_credit_profile` y `submit_loan_application` sin esperar la confirmación, y dijo "He registrado la solicitud". En la confirmación la volvió a pedir: 2 veces NO SE EJECUTA | Sí. En la solicitud solo pidió `get_credit_profile` y preguntó si confirmaba. En la confirmación pidió `submit_loan_application` una vez, NO SE EJECUTA, y dijo "He solicitado el registro… queda pendiente de revisión por un asesor" |
+| Pregunta de memoria respondida sin `→` | Sin `→`, pero no respondió 985.64: intención `product_question`, "No encuentro esa simulación en los fragmentos proporcionados" | Sin `→`, pero no respondió 985.64: intención `product_question`, "Los fragmentos disponibles no incluyen la simulación de S/20,000 a 24 meses". Igual en una sesión nueva con la pregunta justo después de la simulación |
+| Primer texto (ms) | 14205 / 21698 | 11288 / 20169 |
+| Respuesta completa (ms) | 14377 / 21869 | 11448 / 20450 |
+| Tokens (entrada / salida) | 2933 / 554 · 4401 / 2424 | 2933 / 563 · 4238 / 2223 |
+
+La memoria de trabajo sí funcionó en la acción confirmada: con los dos runtimes, `submit_loan_application` salió con `customer_id=CUS-1003`, `product=personal`, `amount=8000` y `term_months=24` sin un `→ get_credit_profile` previo en ese turno. Con lo que ninguna tool resuelve (el saldo), los dos respondieron `out_of_scope`, sin `→` y sin inventar montos.
+
+### ¿La skill frenó la tool de otro dominio?
+
+Mensaje: "Bloquea mi tarjeta CRD-2001". Respuesta: con los dos runtimes, intención `out_of_scope` y ninguna línea `→`. `react`: "No puedo bloquear tarjetas desde aquí", y remitió a la Banca Móvil, la línea de atención o una sucursal. `agent_framework`: "No puedo bloquear tarjetas", con los mismos canales. El modelo no ve `block_card`: el MCP filtra por `DOMAIN=loans` y la skill `loans.md` solo deja pasar sus 3 tools.
+
+### Diferencias entre los dos runtimes
+
+Las tools, los argumentos, el resultado NO SE EJECUTA, el streaming y la respuesta fuera de alcance fueron iguales. Cambiar de runtime fue una línea del `.env` y reiniciar el agente. La diferencia de esta corrida fue en la solicitud del préstamo: con `react` el modelo pidió `submit_loan_application` antes de la confirmación y escribió "He registrado", y con `agent_framework` primero preguntó. Es una sola corrida y el modelo varía, así que lo atribuyo al modelo y no al runtime: los dos reciben los mismos mensajes, tools e instrucciones de `ChatService`. Los tiempos y tokens quedaron parecidos: 11 a 14 s el primer texto de la consulta y 20 a 22 s el de la acción confirmada.
+
+### Conclusión
+
+El harness es nuestro: `ChatService` decide qué tools ve el modelo (MCP + skill), cuántas vueltas da y qué pasa con la acción sensible, y por eso los dos runtimes se comportaron igual en lo que importa. Ninguna acción sensible se ejecutó. La memoria de trabajo sirvió para reusar los datos del cliente en la acción confirmada, pero la pregunta de memoria no dio lo esperable (985.64) con ninguno de los dos runtimes. El dato estaba en el historial; el modelo clasificó la pregunta como `product_question`, y el contexto del RAG le dice que en ese caso responda solo con los fragmentos del corpus, así que contestó que no los encontraba. El modelo con razonamiento tarda: entre 8 y 28 s por turno.
