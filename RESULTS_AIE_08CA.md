@@ -226,3 +226,36 @@ Ninguna significativa más allá del tiempo del primer texto/respuesta completa 
 ### Conclusión
 
 No se visualizan diferencias significativas entre ambos runtimes (agent_framework y react).  Los skills son instrucciones reutilizables que el agente puede consultar, como en este caso, cuando el usuario quiere utilizar una tool de otro dominio (aunque el MCP tampoco lo deja proceder).
+
+## Sesión 8 — Aprobación humana, validación y reintentos
+
+Dominio: `loans` (paso 6).
+
+| Caso | Runtime | Mensaje | Qué pasó | Resultado o ID |
+|---|---|---|---|---|
+| Aprobar | `agent_framework` | Soy CUS-1003, solicita un préstamo personal de 8000 soles a 12 meses. |Se registró la solicitud de préstamo luego de la aprobación del asesor. | Agente [sensitive_action]: La solicitud de préstamo personal por S/8,000 a 12 meses fue registrada. ID LOA-9002. |
+| Rechazar | `react` | Soy CUS-1003, solicita un préstamo personal de 8000 soles a 12 meses. | La solicitud no se registró porque fue rechazada por el asesor. | Agente [sensitive_action]: El asesor rechazó la solicitud de préstamo.  |
+| Error de negocio (`CUS-9999`) | `react` | Soy CUS-9999, ¿qué préstamos he solicitado? | Error de negocio. | No encuentro el cliente CUS-9999 en nuestro sistema. Por favor verifique que el código esté correcto. |
+| Input inválido | `react` | Mi número de cliente es 1001, ¿qué préstamos he solicitado? |Validación por el formato del código de cliente (sin llamar a una tool). | Agente [data_query]: El código “1001” no está en el formato que uso. |
+
+### La trayectoria en el log
+
+INFO agent.application.chat_service: trayectoria 1c1c3d18-a240-4312-a4c9-a9102280f98f: simulate_installment ok → respuesta data_query
+
+INFO agent.application.chat_service: trayectoria 1c1c3d18-a240-4312-a4c9-a9102280f98f: get_credit_profile ok → respuesta sensitive_action
+
+INFO agent.application.chat_service: trayectoria 1c1c3d18-a240-4312-a4c9-a9102280f98f: submit_loan_application pending_approval → respuesta sensitive_action
+
+INFO agent.application.chat_service: trayectoria 1c1c3d18-a240-4312-a4c9-a9102280f98f: decisión del asesor → submit_loan_application rejected
+
+INFO agent.application.chat_service: trayectoria 1c1c3d18-a240-4312-a4c9-a9102280f98f: get_credit_profile error → respuesta data_query
+
+INFO agent.application.chat_service: trayectoria 1c1c3d18-a240-4312-a4c9-a9102280f98f: sin tools → respuesta data_query
+
+### ¿Algo se ejecutó sin que lo aprobaras?
+
+No.
+
+### Conclusión
+
+Las operaciones sensibles requieren aprobación humana para poder realizarse.  En ambos runtimes, la acción de registrar un préstamos requirió que el asesor brinde su aprobación antes de poder registrarlos.  Asimismo, los errores de negocio y 5XX ya generan una respuesta para el cliente.
