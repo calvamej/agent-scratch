@@ -346,3 +346,42 @@ Ninguna en el comportamiento: mismas tools, mismos argumentos, NO SE EJECUTA, la
 ### Conclusión
 
 Las reglas viven en el harness (`ChatService` y la skill), no en el runtime: por eso los dos se comportaron igual. La memoria de trabajo sirve para confirmar acciones y para repetir datos de tools sin volver a llamarlas. Con `gpt-5-mini`, cada turno tarda de 9 a 22 s.
+
+## Sesión 8 — Aprobación humana, validación y reintentos
+
+Dominio: `loans` (paso 6).
+
+| Caso | Runtime | Mensaje | Qué pasó | Resultado o ID |
+|---|---|---|---|---|
+| Aprobar | `agent_framework` | "Soy CUS-1003, solicita un préstamo personal de 8000 soles a 12 meses" y luego "Sí, confírmalo" | `get_credit_profile` y pidió confirmación. Con el "sí", `submit_loan_application` quedó NO SE EJECUTA (`action_id` `call-072d43fc`). El asesor respondió `s`, la tool se ejecutó y el agente informó el registro | `LOA-9001`, `status: registered` |
+| Rechazar | `react` | El mismo mensaje y luego "Sí, apruébalo" | Igual hasta NO SE EJECUTA (`action_id` `call_AuLsJfzU4BNA2jFvHyJA3PGW`). El asesor respondió `N` y el agente dijo que la acción no se ejecutó | `rechazada`, sin ID |
+| Error de negocio (`CUS-9999`) | `react` | "Soy CUS-9999, ¿cuáles son mis préstamos activos?" | `get_credit_profile` devolvió error y el agente pidió verificar el código, sin inventar datos | `El cliente CUS-9999 no existe` |
+| Input inválido | `react` | "Mi número de cliente es 1001, ¿cuáles son mis préstamos activos?" | No llamó ninguna tool: pidió el código en formato `CUS-XXXX` | Sin tool, `data_query` |
+
+### La trayectoria en el log
+
+Aprobar (`agent_framework`):
+
+```
+INFO agent.application.chat_service: trayectoria 2963014a-2dd3-4bc4-93b8-5185ae468a11: get_credit_profile ok → respuesta sensitive_action
+INFO agent.application.chat_service: trayectoria 2963014a-2dd3-4bc4-93b8-5185ae468a11: submit_loan_application pending_approval → respuesta sensitive_action
+INFO agent.application.chat_service: trayectoria 2963014a-2dd3-4bc4-93b8-5185ae468a11: decisión del asesor → submit_loan_application ok
+```
+
+Rechazar, error de negocio e input inválido (`react`, misma sesión):
+
+```
+INFO agent.application.chat_service: trayectoria 8bf13e52-5309-4c04-bd92-06f5347882c4: get_credit_profile ok → respuesta sensitive_action
+INFO agent.application.chat_service: trayectoria 8bf13e52-5309-4c04-bd92-06f5347882c4: submit_loan_application pending_approval → respuesta sensitive_action
+INFO agent.application.chat_service: trayectoria 8bf13e52-5309-4c04-bd92-06f5347882c4: decisión del asesor → submit_loan_application rejected
+INFO agent.application.chat_service: trayectoria 8bf13e52-5309-4c04-bd92-06f5347882c4: get_credit_profile error → respuesta data_query
+INFO agent.application.chat_service: trayectoria 8bf13e52-5309-4c04-bd92-06f5347882c4: sin tools → respuesta data_query
+```
+
+### ¿Algo se ejecutó sin que lo aprobaras?
+
+No. En los dos runtimes, `submit_loan_application` quedó `pending_approval` tras la confirmación del cliente. Solo se ejecutó con el `s` del asesor (`LOA-9001`). Con `N` quedó `rejected` y no se registró nada. Las consultas (`get_credit_profile`) sí corren sin aprobación, como corresponde.
+
+### Conclusión
+
+La aprobación humana funciona igual con los dos runtimes: el cliente confirma, la acción queda pendiente y solo el asesor la ejecuta o la rechaza. El agente informa el resultado real: el ID cuando se aprueba y "no se ejecutó" cuando se rechaza. Un error de negocio llega al modelo como error de la tool y lo explica sin inventar. Un código mal formado se corrige antes de llamar una tool. La trayectoria deja en el log cada paso, incluida la decisión del asesor.
