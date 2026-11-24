@@ -136,3 +136,35 @@ Misma configuración que la base (chunks de 250, `SEARCH_TOP_K=5`, AI Search), 3
 Ojo: cada corrida vuelve a llamar al agente, así que los jueces no calificaron exactamente las mismas respuestas. Las dos diferencias salen de respuestas distintas, no de que los jueces opinen distinto. *(Deducción a partir de las respuestas guardadas en cada archivo.)*
 
 **Conclusión:** decision-1 es más rápido y da probabilidades, así que sirve para frenar un despliegue (sesión 11). G-Eval tarda más, pero su `reasoning` explica la nota, así que sirve para entender por qué falló un caso.
+
+## Sesión 6 — Tools del MCP en el chat
+
+Dominio: `loans`. MCP: el mock (`http://127.0.0.1:8200/mcp`) y el compartido (`bank-mcp`).
+
+### Tools de tu dominio
+
+| MCP | Tools que lista `dev/mcp/mcp_tools.py` |
+|---|---|
+| Mock | 3: `get_credit_profile` (consulta), `simulate_installment` (consulta), `submit_loan_application` (acción sensible) |
+| Compartido | Las mismas 3, con los mismos tipos. Solo se listaron, no se llamaron. La primera vez falló con `Not Found` porque a `MCP_URL` le faltaba `/mcp` al final |
+
+### Conversación en `dev/chat.py` (paso 12)
+
+Agente local con el mock, una corrida por prueba. La última prueba es una llamada directa con `dev/mcp/mcp_tools.py` al mock, sin pasar por el chat.
+
+| Prueba | Mensaje | Tool pedida (`→`) | Qué pasó | Primer texto / respuesta completa (ms) |
+|---|---|---|---|---|
+| Consulta de tu dominio | Soy el cliente CUS-1001. ¿Cuál es mi perfil crediticio y hasta cuánto me pueden prestar? | `get_credit_profile` | Dio los datos de la tool: banda B, máximo S/ 25,000, 0 préstamos activos, endeudamiento 18 % | 11413 / 11607 |
+| Acción confirmada (misma sesión) | Quiero solicitar un préstamo personal de 5000 soles a 12 meses. Confirmo, por favor registra la solicitud. | `submit_loan_application` | No se ejecutó: quedó pendiente de aprobación, y el agente lo dijo | 21593 / 21760 |
+| Sin tool que la resuelva (sesión nueva) | Soy el cliente CUS-1001. ¿Cuál es el saldo pendiente y la fecha de vencimiento de la próxima cuota de mi préstamo actual? | Ninguna | Dijo que no puede consultarlo y dio alternativas | 10230 / 10540 |
+| Tool de otro dominio | `get_cards customer_id=CUS-1001` | `get_cards`, llamada directa | `Unknown tool: 'get_cards'` | — |
+
+### ¿El modelo inventó algún dato cuando ninguna tool lo resolvía?
+
+No inventó datos del cliente: no dio saldo ni fecha. Sí mencionó Banca Móvil y el estado de cuenta sin citar fuentes (no se revisó si están en el corpus).
+
+Aparte, en la acción confirmada agregó que «en breve se comunicarán para revisar documentos y confirmar condiciones». El resultado de la tool solo dice que un asesor la va a revisar.
+
+### Conclusión
+
+En la prueba con el mock, la separación por dominio funcionó, la acción sensible no se ejecutó y no se inventaron datos del cliente. Lo que falta cuidar es que el agente no agregue promesas que la tool no da. Las respuestas tardaron de 10 a 22 segundos. Es una sola corrida por prueba.
