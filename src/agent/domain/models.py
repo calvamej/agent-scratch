@@ -1,6 +1,5 @@
 from enum import StrEnum
 from typing import Annotated, Any, Self
-
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from agent.domain.knowledge import Citation, SearchHit
