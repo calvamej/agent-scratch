@@ -22,13 +22,7 @@ ERROR_STATUS = {
 ERROR_RESPONSES = {status: {"model": ErrorResponse} for status in set(ERROR_STATUS.values())}
 
 
-async def agent_error_handler(request: Request, error: AgentError) -> JSONResponse:
-    log.warning("%s %s falló: %s", request.method, request.url.path, error, exc_info=error.__cause__)
-    body = ErrorResponse(error=error.kind, detail=error.detail)
-    return JSONResponse(status_code=ERROR_STATUS[error.kind], content=body.model_dump(mode="json"))
-
-
-def build_router(chat_service: ChatService) -> APIRouter:
+def build_router() -> APIRouter:
     router = APIRouter()
 
     @router.get("/health")

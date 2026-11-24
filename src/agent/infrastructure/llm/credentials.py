@@ -1,6 +1,5 @@
 from collections.abc import Callable
 
-from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from pydantic import SecretStr
 
 from agent.infrastructure.config.settings import AuthProvider

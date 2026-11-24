@@ -27,8 +27,6 @@ from agent.domain.models import (
 from agent.infrastructure.llm.credentials import Credential
 from agent.infrastructure.llm.errors import foundry_errors
 
-log = logging.getLogger(__name__)
-
 
 class FoundryChatModel:
     """Implementa los puertos ChatModel y QueryRewriter contra Microsoft Foundry (API v1 compatible con OpenAI)."""
