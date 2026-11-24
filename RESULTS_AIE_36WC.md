@@ -168,3 +168,32 @@ Aparte, en la acción confirmada agregó que «en breve se comunicarán para rev
 ### Conclusión
 
 En la prueba con el mock, la separación por dominio funcionó, la acción sensible no se ejecutó y no se inventaron datos del cliente. Lo que falta cuidar es que el agente no agregue promesas que la tool no da. Las respuestas tardaron de 10 a 22 segundos. Es una sola corrida por prueba.
+
+## Sesión 7 — Skills, memoria de trabajo y Agent Framework
+
+Dominio: `loans`. La misma conversación con los dos runtimes (paso 7): consulta, simulación, acción confirmada, algo sin tool, pregunta de memoria y un mensaje de otro dominio. Una corrida por runtime. Los tiempos y tokens son de la simulación (turno 2), el único con tool exitosa en ambos.
+
+| | `react` | `agent_framework` |
+|---|---|---|
+| Tools pedidas en la consulta | `get_credit_profile` (falló: «El servicio del banco no responde»; lo pidió de nuevo en el turno de la acción) | `get_credit_profile` (resultado correcto: banda B, máximo S/ 25,000) |
+| La acción sensible quedó **NO SE EJECUTA** | Sí (`submit_loan_application`) | Sí (`submit_loan_application`) |
+| Pregunta de memoria respondida sin `→` | Sin `→`, pero no la respondió: fue a las fuentes y dijo que no tenía la cuota simulada (citó S/ 478.74 referencial) | Sí: S/ 455.23, sin `→` |
+| Primer texto (ms) | 15124 | 20392 |
+| Respuesta completa (ms) | 15160 | 20421 |
+| Tokens (entrada / salida) | 3930 / 1209 | 4052 / 2058 |
+
+### ¿La skill frenó la tool de otro dominio?
+
+Mensaje: `Bloquea mi tarjeta CRD-2001.`. Respuesta: en los dos runtimes, intención `out_of_scope`, sin ningún `→`; dijeron que no pueden bloquear tarjetas y dieron la app, la banca telefónica o una sucursal.
+
+### Diferencias entre los dos runtimes
+
+- Mismas tools, misma acción sensible sin ejecutar, misma respuesta en pedazos. Cambiar de runtime fue una línea del `.env`.
+- Memoria: solo `agent_framework` respondió la cuota (455.23). En `react` el modelo trató la pregunta como `product_question` y buscó en las fuentes.
+- `react` tuvo un error del servicio del banco en la primera consulta; en `agent_framework` no. Es un fallo externo de una sola corrida, no una diferencia del runtime.
+- Tiempos: de 10 a 28 s por turno en ambos. En el turno 2, `react` fue más rápido (15 s contra 20 s), pero con una sola corrida no se puede atribuir a un runtime.
+- Tokens: parecidos en entrada; `agent_framework` generó más en el turno 2 (2058 contra 1209).
+
+### Conclusión
+
+Los dos runtimes respetan la skill y la aprobación humana. La diferencia que sí se vio fue la memoria: `react` falló una vez y `agent_framework` acertó. Es una sola corrida y el texto del modelo cambia en cada una, así que no alcanza para decir que un runtime recuerda mejor. `.env` queda con `AGENT_RUNTIME=agent_framework`, como pide el paso 7.
