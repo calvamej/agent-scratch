@@ -1,1 +1,0 @@
-{"id": "loans-AIE08CA", "type": "answerable", "history": [], "question": "¿Qué es la TCEA en un préstamo?", "expected_intent": "product_question", "expected_sources": ["loans-glossary.md"], "forbidden_sources": [], "key_facts": ["Costo total anual del préstamo"]}
