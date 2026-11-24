@@ -2,7 +2,6 @@ import json
 import logging
 from collections.abc import Iterator
 from uuid import UUID, uuid4
-
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
