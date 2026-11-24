@@ -1,5 +1,6 @@
 from enum import StrEnum
 from pathlib import Path
+
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
