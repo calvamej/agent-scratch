@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 from azure.cosmos import CosmosClient
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
-from fastapi import FastAPI
+from fastapi import FastAPI 
 
 from agent.application.chat_service import ChatService
 from agent.domain.errors import AgentError
