@@ -197,3 +197,34 @@ Mensaje: `Bloquea mi tarjeta CRD-2001.`. Respuesta: en los dos runtimes, intenci
 ### Conclusión
 
 Los dos runtimes respetan la skill y la aprobación humana. La diferencia que sí se vio fue la memoria: `react` falló una vez y `agent_framework` acertó. Es una sola corrida y el texto del modelo cambia en cada una, así que no alcanza para decir que un runtime recuerda mejor. `.env` queda con `AGENT_RUNTIME=agent_framework`, como pide el paso 7.
+
+## Sesión 8 — Aprobación humana, validación y reintentos
+
+Dominio: `loans` (paso 6). MCP compartido de Azure. Una corrida por caso, con `dev/chat.py` contra un agente por runtime (`AGENT_RUNTIME` puesto en el comando, sin cambiar el `.env`).
+
+| Caso | Runtime | Mensaje | Qué pasó | Resultado o ID |
+|---|---|---|---|---|
+| Aprobar | `agent_framework` | `Soy CUS-1001, registra una solicitud de préstamo personal por 5000 soles a 12 meses.` | Consultó `get_credit_profile`, pidió `submit_loan_application` y quedó **NO SE EJECUTA, pendiente de aprobación**. Aprobé con `s` y la tool se ejecutó. | `LOA-9001`, estado `registered` |
+| Rechazar | `react` | El mismo mensaje | Misma trayectoria hasta la acción pendiente. Rechacé con `n`: no se ejecutó y el agente se lo dijo al cliente. | `rechazada` (sin ID) |
+| Error de negocio (`CUS-9999`) | `react` | `Soy CUS-9999 ¿Cuanto maximo me pueden prestar?` | `get_credit_profile` devolvió `El cliente CUS-9999 no existe`. El agente no inventó un monto y pidió verificar el código. | Error: `El cliente CUS-9999 no existe` |
+| Input inválido | `react` | Línea vacía (solo espacios) | La API la rechazó antes de llegar al modelo ni al MCP. | HTTP 422: `String should have at least 1 character` |
+
+### La trayectoria en el log
+
+```
+trayectoria b40e7a2c…: get_credit_profile ok → submit_loan_application pending_approval → respuesta sensitive_action
+trayectoria b40e7a2c…: decisión del asesor → submit_loan_application ok
+trayectoria 6d6b608f…: get_credit_profile ok → submit_loan_application pending_approval → respuesta sensitive_action
+trayectoria 6d6b608f…: decisión del asesor → submit_loan_application rejected
+trayectoria 752c776e…: get_credit_profile error → respuesta data_query
+```
+
+La primera pareja es Aprobar (`agent_framework`), la segunda Rechazar (`react`) y la última `CUS-9999` (`react`). El input inválido no deja trayectoria: no llegó al servicio.
+
+### ¿Algo se ejecutó sin que lo aprobaras?
+
+No. `submit_loan_application` quedó `pending_approval` en los dos casos y solo se ejecutó (`ok`) después de mi `s`. Con `n` quedó `rejected` y no se creó solicitud.
+
+### Conclusión
+
+La aprobación humana, la validación del input y el error de negocio funcionaron igual con los dos runtimes. Un detalle por cuidar: antes de la aprobación el agente dijo «He registrado tu solicitud» (`agent_framework`) y «He solicitado el registro» (`react`), cuando la tool aún no se había ejecutado; la respuesta no distingue bien «pendiente» de «registrada». Es una sola corrida por caso y el texto del modelo cambia en cada una. Con `CUS-9999`, el MCP compartido respondió una vez «El servicio del banco no responde» (fallo del servidor) y otra «no existe»; este resultado es el segundo.
