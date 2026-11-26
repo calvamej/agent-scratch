@@ -385,3 +385,49 @@ No. En los dos runtimes, `submit_loan_application` quedó `pending_approval` tra
 ### Conclusión
 
 La aprobación humana funciona igual con los dos runtimes: el cliente confirma, la acción queda pendiente y solo el asesor la ejecuta o la rechaza. El agente informa el resultado real: el ID cuando se aprueba y "no se ejecutó" cuando se rechaza. Un error de negocio llega al modelo como error de la tool y lo explica sin inventar. Un código mal formado se corrige antes de llamar una tool. La trayectoria deja en el log cada paso, incluida la decisión del asesor.
+
+## Sesión 9 — Despliegue en Azure
+
+Equipo: `team-04`. Dominio: `loans`.
+
+| Comprobación | Resultado |
+|---|---|
+| Tests en el contenedor (paso 3) | `docker build -f devops/Dockerfile --target test` y `docker run --rm agent:test`: `139 passed, 5 skipped in 2.76s`. Los 5 skipped son los golden sets, que necesitan `evals/` y no entran en la imagen. En el PR, el job `test` del pipeline pasó en 44 s y `deploy` quedó skipped |
+| Acción aprobada después de reiniciar `uvicorn` (paso 2, Cosmos DB) | Arranque con `Conversation store: Cosmos DB workshop/team-04`. Sesión `ea3097e9-317e-42a8-b2f4-1ec01ebc734e`: `submit_loan_application` quedó NO SE EJECUTA (`action_id` `call_nEmLaC1Xf47tadxO90xmXCzH`). Se detuvo `uvicorn` (PID 70429) y se levantó de nuevo (PID 71287). El asesor aprobó: `resultado: LOA-9002`, `status: registered`. En Cosmos DB la sesión guarda 8 mensajes y `pending: None`. |
+| Imagen desplegada (`team-04/agent:<sha>`) | `team-04/agent:03c661b9fd765df5a19dd2dd36231656f9bf6e6d`, del merge del PR #47 (`equipo-04` → `main`) |
+| Revisión activa y duración del job `deploy` | `ca-agent-chat-04--0000002`: activa, 100 % del tráfico, `Healthy`. Job `deploy` en 2 min 34 s (run 45655281421) |
+| `/health` del agente desplegado | `Agente en https://ca-agent-chat-04.<...>.azurecontainerapps.io: ok` con el token de `az login`. Sin token, `/health` responde 401 |
+| Respuesta con `Fuentes:` contra Azure (y su tiempo en ms) | "¿Quién puede solicitar un préstamo personal?": de 21 a 70 años, DNI vigente, ingresos desde S/1,500 y sin deudas vencidas. `Fuentes:` `personal-loan-requirements.pdf` y `loans-faq.md`. Primer texto en 5744 ms, respuesta completa en 5872 ms |
+| Acción aprobada contra Azure, con su `resultado:` | Préstamo personal de S/8,000 a 12 meses: `get_credit_profile` ok y `submit_loan_application` NO SE EJECUTA (`action_id` `call-0b6eafcd`), turno en 24007 ms. El asesor respondió `s`: `resultado: LOA-9002`, `status: registered` |
+
+### El agente desplegado en los logs (paso 8)
+
+`az containerapp logs show -n ca-agent-chat-04 -g rg-team-04`, con los endpoints recortados:
+
+```
+INFO agent.infrastructure.bootstrap: Foundry auth provider: entra_id
+INFO agent.infrastructure.bootstrap: Knowledge base: azure_search · <url> (índice idx-team-04) · 30 chunks
+INFO agent.infrastructure.bootstrap: Conversation store: Cosmos DB workshop/team-04
+INFO agent.infrastructure.bootstrap: MCP: <url> · 3 tools: simulate_installment, get_credit_profile, submit_loan_application
+INFO agent.infrastructure.bootstrap: Agent runtime: agent_framework
+INFO agent.application.chat_service: trayectoria 2679ba7e-2697-4db7-87eb-d4c30f7d4295: get_credit_profile ok → submit_loan_application pending_approval → respuesta sensitive_action
+INFO agent.application.chat_service: trayectoria 2679ba7e-2697-4db7-87eb-d4c30f7d4295: decisión del asesor → submit_loan_application ok
+```
+
+### Verificación de despliegue (paso 9)
+
+| Comprobación | Evidencia |
+|---|---|
+| `health` | `Agente en https://ca-agent-chat-04.<...>.azurecontainerapps.io: ok` |
+| `imagen` | `team-04/agent:03c661b9fd765df5a19dd2dd36231656f9bf6e6d`, publicada por el job `deploy` del run 45655281421 |
+| `identidad` | Respuesta con `Fuentes:` (`personal-loan-requirements.pdf`, `loans-faq.md`): la identidad administrada lee `idx-team-04`. `resultado: LOA-9002` de la acción aprobada: entra al MCP compartido. El log muestra `Conversation store: Cosmos DB workshop/team-04` y `MCP: ... 3 tools` |
+| `secretos` | Variables de la Container App: `APPLICATIONINSIGHTS_CONNECTION_STRING`, `AZURE_CLIENT_ID`, `AZURE_OPENAI_ENDPOINT`, `COSMOS_CONTAINER`, `COSMOS_DATABASE`, `COSMOS_ENDPOINT`, `FOUNDRY_PROJECT_ENDPOINT`, `KEY_VAULT_URI`, `MCP_SCOPE`, `MCP_URL`, `SEARCH_ENDPOINT`, `SEARCH_INDEX`, `TEAM_ID`. Son endpoints, nombres de recursos e identificadores: ninguna es una api key ni una contraseña |
+| `pruebas` | Job `test` en verde (45 s) en el merge a `main` del run 45655281421 |
+
+### Problemas que encontraste y cómo los resolviste
+
+- Paso 8: `dev/chat.py` decía "No hay agente en ..." aunque la URL era la correcta. La causa era que el Python de la laptop (el instalador de python.org en macOS) no trae certificados raíz, así que fallaba la verificación TLS (`CERTIFICATE_VERIFY_FAILED`). Se resolvió en la misma terminal del chat con `export SSL_CERT_FILE=$(uv run python -c "import certifi;print(certifi.where())")`, sin cambiar código. La otra opción es correr una vez `Install Certificates.command` de la carpeta de Python.
+
+### Conclusión
+
+El agente de `team-04` corre en Azure con la imagen `team-04/agent:03c661b9...`, que GitHub Actions probó, construyó, publicó en ACR y desplegó en `ca-agent-chat-04` sin contraseñas, gracias a OIDC. El agente desplegado usa su identidad administrada para responder con fuentes de AI Search y ejecutar la acción aprobada en el MCP compartido, sin api keys ni secretos en el repo ni en la Container App. El historial y la acción pendiente pasaron a Cosmos DB: una acción pedida antes de reiniciar `uvicorn` se aprobó después del reinicio (`LOA-9002` y `LOA-9003`). Hasta la sesión 8, ese mismo paso daba 404.
