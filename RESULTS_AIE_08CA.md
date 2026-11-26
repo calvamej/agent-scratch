@@ -259,3 +259,43 @@ No.
 ### Conclusión
 
 Las operaciones sensibles requieren aprobación humana para poder realizarse.  En ambos runtimes, la acción de registrar un préstamos requirió que el asesor brinde su aprobación antes de poder registrarlos.  Asimismo, los errores de negocio y 5XX ya generan una respuesta para el cliente.
+
+## Sesión 9 — Despliegue en Azure
+
+Equipo: `team-04`. Dominio: `loans`.
+
+| Comprobación | Resultado |
+|---|---|
+| Tests en el contenedor (paso 3) |139 passed, 5 skipped |
+| Acción aprobada después de reiniciar `uvicorn` (paso 2, Cosmos DB) | Se pudo aprobar/registrar la solicitud de préstamos luego del reinicio |
+| Imagen desplegada (`team-NN/agent:<sha>`) | Imagen publicada en: acrworkshopjsu3.azurecr.io/team-04/agent:03c661b9fd765df5a19dd2dd36231656f9bf6e6d |
+| Revisión activa y duración del job `deploy` | succeeded 8 hours ago in 2m 34s |
+| `/health` del agente desplegado | Agente en https://ca-agent-chat-04.icybush-2ea2dfc1.eastus2.azurecontainerapps.io: ok |
+| Respuesta con `Fuentes:` contra Azure (y su tiempo en ms) | Agente [product_question]: Para un préstamo de S/20,000 necesitas (..)  2 fuentes citadas: loans-faq.md, personal-loan requirements.pdf.  Primer texto en 13174 ms, respuesta completa en 13366 ms.|
+| Acción aprobada contra Azure, con su `resultado:` | En este caso, la solicitud sensible falló:  error: {"error": "El servicio del banco no responde; intenta de nuevo en unos minutos"} |
+
+### Qué pone Azure y qué pone la imagen
+
+Variables Azure:
+
+APPLICATIONINSIGHTS_CONNECTION_STRING
+AZURE_CLIENT_ID
+AZURE_OPENAI_ENDPOINT
+COSMOS_CONTAINER
+COSMOS_DATABASE
+COSMOS_ENDPOINT
+FOUNDRY_PROJECT_ENDPOINT
+KEY_VAULT_URI
+MCP_SCOPE
+MCP_URL
+SEARCH_ENDPOINT
+SEARCH_INDEX
+TEAM_ID
+
+### Problemas que encontraste y cómo los resolviste
+
+El Azure_Client_ID no parecía ser el correcto, ya que el despliegue finalizaba con error = Login a Azure falla con No matching federated identity record.  Tuvimos que contactarnos con los instructores para obtener el valor correcto. 
+
+### Conclusión
+
+Al haber agregado Cosmos DB a la solución permite que se tenga persistencia de las conversaciones realizadas con el agente.  Antes, si se continuaba la conversación con el uvicorn reiniciado generaba un error 404, ahora continuna con la aprobación/registro de la solicitud.  El despliegue en Azure mantiene las funcionalidades probadas en local (aunque actualmente tengo el error: {"error": "El servicio del banco no responde; intenta de nuevo en unos minutos"}), pero trae todos los beneficios del componente alojado en la nube.
