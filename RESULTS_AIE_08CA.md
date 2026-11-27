@@ -306,3 +306,34 @@ El Azure_Client_ID no parecía ser el correcto, ya que el despliegue finalizaba 
 ### Conclusión
 
 Al haber agregado Cosmos DB a la solución permite que se tenga persistencia de las conversaciones realizadas con el agente.  Antes, si se continuaba la conversación con el uvicorn reiniciado generaba un error 404, ahora continuna con la aprobación/registro de la solicitud.  El despliegue en Azure mantiene las funcionalidades probadas en local, pero trae todos los beneficios del componente alojado en la nube.
+
+## Sesión 10 — Trazas por turno y dashboard
+
+Equipo: `team-04`. App Insights: `appi-team-04`. Los cuatro casos contra el agente desplegado (paso 8).
+
+| Caso | `operation_Id` | Latencia (ms) | Tokens de entrada | Tokens de salida | Tools | Error | Observaciones |
+|---|---|---|---|---|---|---|---|
+| Saludo | a15afa56d1ccc039b2006d89bd6882da |6366 | 1759 |666 |-| - | Sin Tools, baja duración y tokens |
+| Consulta con retrieval |a5e30f19d9f9d211b0f49bb2f32ba975 | 7910 | 2286| 881|-| -|Sin Tools pero con consulta con fuentes |
+| Llamada a tool | 871a3fe7040cf841242184b56d4c4a6f | 13430 | 5495 | 1497 |tool simulate_installment| - |llamado a la tool tool simulate_installment.  Duración: 88ms|
+| Error controlado |fa19b4a5554ecd90b1011e35fda12a9e| 8 | - | - | - |not_found | name: chat.decision, error: not_found |
+
+En **Observaciones**, una línea: lo que llamó la atención de la traza (qué se llevó el tiempo, la dependencia que falló, si el
+error permite ubicar el turno). En **Tools**, `—` si el turno no llamó ninguna.
+
+### Lo que dice el workbook
+
+| Panel | Lo que viste |
+|---|---|
+| Latencia p95 por intención | sensitive_action (28828 ms), data_query (24877 ms), product_question (17573 ms), greetings (6366 ms). |
+| Tokens por turno | 16.3k (sum) |
+| Dónde se va el tiempo de un turno | En Foundry Chat (156157 ms) y MCP (32390 ms) |
+| Tools con error | simulate_installment (3) |
+
+### ¿Qué optimizarías primero y por qué?
+
+El tiempo de respuesta de Foudry Chat, ya que según lo revisado es quien tiene más latencia en el turno.
+
+### Conclusión
+
+Los logs del application insights (y el Workbook) permiten monitorear el rendimiento del agente, incluyendo latencia, consumo de tokens y registro de errores.  Esto ayuda a identificar las dependencias y posibles cuellos de botella en las respuestas.
