@@ -228,3 +228,36 @@ No. `submit_loan_application` quedó `pending_approval` en los dos casos y solo 
 ### Conclusión
 
 La aprobación humana, la validación del input y el error de negocio funcionaron igual con los dos runtimes. Un detalle por cuidar: antes de la aprobación el agente dijo «He registrado tu solicitud» (`agent_framework`) y «He solicitado el registro» (`react`), cuando la tool aún no se había ejecutado; la respuesta no distingue bien «pendiente» de «registrada». Es una sola corrida por caso y el texto del modelo cambia en cada una. Con `CUS-9999`, el MCP compartido respondió una vez «El servicio del banco no responde» (fallo del servidor) y otra «no existe»; este resultado es el segundo.
+
+## Sesión 9 — Despliegue en Azure
+
+Equipo: `team-04`. Dominio: `loans`.
+
+| Comprobación | Resultado |
+|---|---|
+| Tests en el contenedor (paso 3) | `docker run --rm agent:test` → 139 passed, 5 skipped en 3.47s |
+| Acción aprobada después de reiniciar `uvicorn` (paso 2, Cosmos DB) | `submit_loan_application` aprobada (`s`): `resultado: {"id": "LOA-9002", "customer_id": "CUS-1001", "product": "personal", "amount": 5000.0, "term_months": 12, "status": "registered"}` |
+| Imagen desplegada (`team-04/agent:<sha>`) | Publicada por el job `deploy` del pipeline `deploy-agent` al hacer merge a `main` (paso 7, lo ejecuta el capitán) |
+| Revisión activa y duración del job `deploy` | `ca-agent-chat-04--0000003`: `Activating` → `RunningAtMaxScale`; paso de espera de la revisión tomó 35s |
+| `/health` del agente desplegado | `Agente en https://ca-agent-chat-04.icybush-2ea2dfc1.eastus2.azurecontainerapps.io: ok` |
+| Respuesta con `Fuentes:` contra Azure (y su tiempo en ms) | Pregunta "¿Cuáles son los requisitos para un préstamo personal?" → `Fuentes:` con 3 citas de `personal-loan-requirements.pdf`; primer texto en 10872 ms, respuesta completa en 10876 ms |
+| Acción aprobada contra Azure, con su `resultado:` | `submit_loan_application` (CUS-1001, personal, 5000, 12 meses), aprobada con `s`; el MCP respondió `error: {"error": "El servicio del banco no responde; intenta de nuevo en unos minutos"}` (fallo externo del MCP compartido, no de la aprobación) |
+
+### Qué pone Azure y qué pone la imagen
+
+La imagen (`devops/Dockerfile`, target `runtime`) fija `DOMAIN`, `FOUNDRY_AUTH_PROVIDER=entra_id`, `KNOWLEDGE_BASE=azure_search`, `AGENT_RUNTIME=agent_framework`, y en el `CMD` copia `AZURE_OPENAI_ENDPOINT` a `FOUNDRY_ENDPOINT` si no viene ya puesta.
+
+Azure (la Container App) pone el resto, vía `az containerapp show ... properties.template.containers[0].env[].name`:
+`APPLICATIONINSIGHTS_CONNECTION_STRING`, `AZURE_CLIENT_ID`, `AZURE_OPENAI_ENDPOINT`, `COSMOS_CONTAINER`, `COSMOS_DATABASE`, `COSMOS_ENDPOINT`, `FOUNDRY_PROJECT_ENDPOINT`, `KEY_VAULT_URI`, `MCP_SCOPE`, `MCP_URL`, `SEARCH_ENDPOINT`, `SEARCH_INDEX`, `TEAM_ID`.
+
+Ninguna es una api key ni una contraseña: son endpoints, nombres de recursos e identificadores.
+
+### Problemas que encontraste y cómo los resolviste
+
+- Al correr `dev/chat.py` sin exportar `AGENT_URL`/`AGENT_SCOPE` en la misma terminal, el `check_health` colgó hasta el timeout (`TimeoutError`). Se resolvió exportando ambas variables en la terminal donde se ejecuta el chat.
+- En una de las corridas contra Azure, `get_credit_profile` devolvió un error transitorio del servicio del banco (MCP compartido); en otra corrida sí respondió. El agente manejó bien el caso: no inventó datos y le pidió confirmación al cliente.
+- La aprobación de `submit_loan_application` contra Azure terminó en `error` (servicio del banco no responde) en vez de un ID de registro; es un fallo externo del MCP compartido, no del flujo de aprobación (que sí llegó a ejecutar la tool tras el `s`).
+
+### Conclusión
+
+El agente desplegado en Azure se comporta igual que en local: arranca con `entra_id` y `azure_search`, responde `/health` solo con token de Entra ID válido, trae `Fuentes:` al consultar el corpus del dominio (`idx-team-04` en AI Search) y respeta la aprobación humana antes de ejecutar la acción sensible contra el MCP compartido. Los fallos vistos (timeout por variables no exportadas, error transitorio del MCP) son de entorno/servicio externo, no del pipeline de despliegue ni de la imagen.
