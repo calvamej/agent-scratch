@@ -228,3 +228,64 @@ No. `submit_loan_application` quedó `pending_approval` en los dos casos y solo 
 ### Conclusión
 
 La aprobación humana, la validación del input y el error de negocio funcionaron igual con los dos runtimes. Un detalle por cuidar: antes de la aprobación el agente dijo «He registrado tu solicitud» (`agent_framework`) y «He solicitado el registro» (`react`), cuando la tool aún no se había ejecutado; la respuesta no distingue bien «pendiente» de «registrada». Es una sola corrida por caso y el texto del modelo cambia en cada una. Con `CUS-9999`, el MCP compartido respondió una vez «El servicio del banco no responde» (fallo del servidor) y otra «no existe»; este resultado es el segundo.
+
+## Sesión 9 — Despliegue en Azure
+
+Equipo: `team-04`. Dominio: `loans`.
+
+| Comprobación | Resultado |
+|---|---|
+| Tests en el contenedor (paso 3) | `docker run --rm agent:test` → 139 passed, 5 skipped en 3.47s |
+| Acción aprobada después de reiniciar `uvicorn` (paso 2, Cosmos DB) | `submit_loan_application` aprobada (`s`): `resultado: {"id": "LOA-9002", "customer_id": "CUS-1001", "product": "personal", "amount": 5000.0, "term_months": 12, "status": "registered"}` |
+| Imagen desplegada (`team-04/agent:<sha>`) | Publicada por el job `deploy` del pipeline `deploy-agent` al hacer merge a `main` (paso 7, lo ejecuta el capitán) |
+| Revisión activa y duración del job `deploy` | `ca-agent-chat-04--0000003`: `Activating` → `RunningAtMaxScale`; paso de espera de la revisión tomó 35s |
+| `/health` del agente desplegado | `Agente en https://ca-agent-chat-04.icybush-2ea2dfc1.eastus2.azurecontainerapps.io: ok` |
+| Respuesta con `Fuentes:` contra Azure (y su tiempo en ms) | Pregunta "¿Cuáles son los requisitos para un préstamo personal?" → `Fuentes:` con 3 citas de `personal-loan-requirements.pdf`; primer texto en 10872 ms, respuesta completa en 10876 ms |
+| Acción aprobada contra Azure, con su `resultado:` | `submit_loan_application` (CUS-1001, personal, 5000, 12 meses), aprobada con `s`; el MCP respondió `error: {"error": "El servicio del banco no responde; intenta de nuevo en unos minutos"}` (fallo externo del MCP compartido, no de la aprobación) |
+
+### Qué pone Azure y qué pone la imagen
+
+La imagen (`devops/Dockerfile`, target `runtime`) fija `DOMAIN`, `FOUNDRY_AUTH_PROVIDER=entra_id`, `KNOWLEDGE_BASE=azure_search`, `AGENT_RUNTIME=agent_framework`, y en el `CMD` copia `AZURE_OPENAI_ENDPOINT` a `FOUNDRY_ENDPOINT` si no viene ya puesta.
+
+Azure (la Container App) pone el resto, vía `az containerapp show ... properties.template.containers[0].env[].name`:
+`APPLICATIONINSIGHTS_CONNECTION_STRING`, `AZURE_CLIENT_ID`, `AZURE_OPENAI_ENDPOINT`, `COSMOS_CONTAINER`, `COSMOS_DATABASE`, `COSMOS_ENDPOINT`, `FOUNDRY_PROJECT_ENDPOINT`, `KEY_VAULT_URI`, `MCP_SCOPE`, `MCP_URL`, `SEARCH_ENDPOINT`, `SEARCH_INDEX`, `TEAM_ID`.
+
+Ninguna es una api key ni una contraseña: son endpoints, nombres de recursos e identificadores.
+
+### Problemas que encontraste y cómo los resolviste
+
+- Al correr `dev/chat.py` sin exportar `AGENT_URL`/`AGENT_SCOPE` en la misma terminal, el `check_health` colgó hasta el timeout (`TimeoutError`). Se resolvió exportando ambas variables en la terminal donde se ejecuta el chat.
+- En una de las corridas contra Azure, `get_credit_profile` devolvió un error transitorio del servicio del banco (MCP compartido); en otra corrida sí respondió. El agente manejó bien el caso: no inventó datos y le pidió confirmación al cliente.
+- La aprobación de `submit_loan_application` contra Azure terminó en `error` (servicio del banco no responde) en vez de un ID de registro; es un fallo externo del MCP compartido, no del flujo de aprobación (que sí llegó a ejecutar la tool tras el `s`).
+
+### Conclusión
+
+El agente desplegado en Azure se comporta igual que en local: arranca con `entra_id` y `azure_search`, responde `/health` solo con token de Entra ID válido, trae `Fuentes:` al consultar el corpus del dominio (`idx-team-04` en AI Search) y respeta la aprobación humana antes de ejecutar la acción sensible contra el MCP compartido. Los fallos vistos (timeout por variables no exportadas, error transitorio del MCP) son de entorno/servicio externo, no del pipeline de despliegue ni de la imagen.
+
+## Sesión 10 — Trazas por turno y dashboard
+
+Equipo: `team-04`. App Insights: `appi-team-04`. Los cuatro casos contra el agente desplegado (paso 8).
+
+| Caso | `operation_Id` | Latencia (ms) | Tokens de entrada | Tokens de salida | Tools | Error | Observaciones |
+|---|---|---|---|---|---|---|---|
+| Saludo | dc462a7f686ee36cf1fc568729ceccc5 | 9421 | 1667 | 1046 | — | — | Sin tools; latencia alta para un saludo simple, el modelo tomó ~9s en responder. |
+| Consulta con retrieval | 55217608fea91f22c704b8d1e8440a27 | 7369 | 1900 | 775 | — | — | No encontró el dato en los fragmentos del índice; no llamó ninguna tool. |
+| Llamada a tool | 97521829c1e46c5f9ec6850c92cb0181 | 10508 | 4024 | 982 | simulate_installment:ok | — | La tool respondió en 102 ms; casi todo el tiempo lo consumió el modelo, no el MCP. |
+| Error controlado | c1e6f1410bee2f30bd46740bd41dd181 | 8 | — | — | — | not_found | Decisión sobre un `action_id` inexistente; falló casi de inmediato (8 ms), antes de llamar al modelo. |
+
+### Lo que dice el workbook
+
+| Panel | Lo que viste |
+|---|---|
+| Latencia p95 por intención | `sensitive_action` fue la más lenta (p95 22929 ms), muy por encima de `greeting` (p95 9421 ms). |
+| Tokens por turno | Pico cerca de las 10 AM (~14K tokens), coincidiendo con un turno de contexto más largo (`data_query`/`sensitive_action`). |
+| Dónde se va el tiempo de un turno | "Foundry - chat" concentró el total_ms más alto (109629 ms, p95 7787 ms); MCP, AI Search y Cosmos DB tardan muy poco en comparación. |
+| Tools con error | `get_credit_profile` y `submit_loan_application` aparecieron en estado `error` en algunas llamadas. |
+
+### ¿Qué optimizarías primero y por qué?
+
+El tiempo de respuesta del modelo (Foundry - chat), porque es el que más tiempo toma para mostrar una respuesta: domina la latencia total de cada turno, muy por encima de MCP, AI Search o Cosmos DB.
+
+### Conclusión
+
+Las trazas confirman que el cuello de botella del agente está en la llamada al modelo (Foundry - chat), no en las dependencias externas (MCP, AI Search, Cosmos DB), que responden en milisegundos. El caso de error controlado muestra que una decisión sobre una acción inexistente falla rápido y queda bien registrada (`chat.decision`, `agent.error = not_found`), sin necesidad de llegar al modelo.
