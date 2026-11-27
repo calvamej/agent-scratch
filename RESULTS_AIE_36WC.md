@@ -261,3 +261,31 @@ Ninguna es una api key ni una contraseña: son endpoints, nombres de recursos e 
 ### Conclusión
 
 El agente desplegado en Azure se comporta igual que en local: arranca con `entra_id` y `azure_search`, responde `/health` solo con token de Entra ID válido, trae `Fuentes:` al consultar el corpus del dominio (`idx-team-04` en AI Search) y respeta la aprobación humana antes de ejecutar la acción sensible contra el MCP compartido. Los fallos vistos (timeout por variables no exportadas, error transitorio del MCP) son de entorno/servicio externo, no del pipeline de despliegue ni de la imagen.
+
+## Sesión 10 — Trazas por turno y dashboard
+
+Equipo: `team-04`. App Insights: `appi-team-04`. Los cuatro casos contra el agente desplegado (paso 8).
+
+| Caso | `operation_Id` | Latencia (ms) | Tokens de entrada | Tokens de salida | Tools | Error | Observaciones |
+|---|---|---|---|---|---|---|---|
+| Saludo | dc462a7f686ee36cf1fc568729ceccc5 | 9421 | 1667 | 1046 | — | — | Sin tools; latencia alta para un saludo simple, el modelo tomó ~9s en responder. |
+| Consulta con retrieval | 55217608fea91f22c704b8d1e8440a27 | 7369 | 1900 | 775 | — | — | No encontró el dato en los fragmentos del índice; no llamó ninguna tool. |
+| Llamada a tool | 97521829c1e46c5f9ec6850c92cb0181 | 10508 | 4024 | 982 | simulate_installment:ok | — | La tool respondió en 102 ms; casi todo el tiempo lo consumió el modelo, no el MCP. |
+| Error controlado | c1e6f1410bee2f30bd46740bd41dd181 | 8 | — | — | — | not_found | Decisión sobre un `action_id` inexistente; falló casi de inmediato (8 ms), antes de llamar al modelo. |
+
+### Lo que dice el workbook
+
+| Panel | Lo que viste |
+|---|---|
+| Latencia p95 por intención | `sensitive_action` fue la más lenta (p95 22929 ms), muy por encima de `greeting` (p95 9421 ms). |
+| Tokens por turno | Pico cerca de las 10 AM (~14K tokens), coincidiendo con un turno de contexto más largo (`data_query`/`sensitive_action`). |
+| Dónde se va el tiempo de un turno | "Foundry - chat" concentró el total_ms más alto (109629 ms, p95 7787 ms); MCP, AI Search y Cosmos DB tardan muy poco en comparación. |
+| Tools con error | `get_credit_profile` y `submit_loan_application` aparecieron en estado `error` en algunas llamadas. |
+
+### ¿Qué optimizarías primero y por qué?
+
+El tiempo de respuesta del modelo (Foundry - chat), porque es el que más tiempo toma para mostrar una respuesta: domina la latencia total de cada turno, muy por encima de MCP, AI Search o Cosmos DB.
+
+### Conclusión
+
+Las trazas confirman que el cuello de botella del agente está en la llamada al modelo (Foundry - chat), no en las dependencias externas (MCP, AI Search, Cosmos DB), que responden en milisegundos. El caso de error controlado muestra que una decisión sobre una acción inexistente falla rápido y queda bien registrada (`chat.decision`, `agent.error = not_found`), sin necesidad de llegar al modelo.
