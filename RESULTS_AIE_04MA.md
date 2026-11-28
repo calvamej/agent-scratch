@@ -431,3 +431,31 @@ INFO agent.application.chat_service: trayectoria 2679ba7e-2697-4db7-87eb-d4c30f7
 ### Conclusión
 
 El agente de `team-04` corre en Azure con la imagen `team-04/agent:03c661b9...`, que GitHub Actions probó, construyó, publicó en ACR y desplegó en `ca-agent-chat-04` sin contraseñas, gracias a OIDC. El agente desplegado usa su identidad administrada para responder con fuentes de AI Search y ejecutar la acción aprobada en el MCP compartido, sin api keys ni secretos en el repo ni en la Container App. El historial y la acción pendiente pasaron a Cosmos DB: una acción pedida antes de reiniciar `uvicorn` se aprobó después del reinicio (`LOA-9002` y `LOA-9003`). Hasta la sesión 8, ese mismo paso daba 404.
+
+## Sesión 10 — Trazas por turno y dashboard
+
+Equipo: `team-04`. App Insights: `appi-team-04`. Los cuatro casos contra el agente desplegado (paso 8).
+
+| Caso | `operation_Id` | Latencia (ms) | Tokens de entrada | Tokens de salida | Tools | Error | Observaciones |
+|---|---|---|---|---|---|---|---|
+| Saludo | `64c432a20c371948300b4432cab1c5a9` | 1991 | 1400 | 125 | — | — | El modelo se llevó 1192 ms; aun siendo un saludo, el turno hizo embeddings (125 ms) y búsqueda en AI Search (111 ms) |
+| Consulta con retrieval | `19d87dcdb915fc76315146f4e3ce0d36` | 2785 | 1440 | 294 | — | — | "¿Qué es el desgravamen?": embeddings (219 ms) y AI Search (91 ms) dentro del turno; el modelo se llevó 2135 ms y citó `loans-glossary.md` |
+| Llamada a tool | `7c54a483dd2e9e9496779d7dc70334bb` | 8371 | 3305 | 910 | `simulate_installment:ok` | — | `tool simulate_installment` (124 ms) con su `POST /mcp`; las dos llamadas al modelo se llevaron 6399 ms, el 76 % del turno |
+| Error controlado | `fa19b4a5554ecd90b1011e35fda12a9e` | 8 | — | — | — | `not_found` | `chat.decision` en rojo con `agent.error` = `not_found` y respuesta 404; solo una lectura de Cosmos DB (5 ms), sin modelo, y el `operation_Id` ubica el turno |
+
+### Lo que dice el workbook
+
+| Panel | Lo que viste |
+|---|---|
+| Latencia p95 por intención | `sensitive_action` 28828 ms (p50 22615), `data_query` 24877, `product_question` 17573, `out_of_scope` 13879 y `greeting` 9421. Los turnos con tools y aprobación son los que más hacen esperar |
+| Tokens por turno | 38 turnos, 3704 tokens y 2 llamadas al modelo por turno en promedio. El costo crece con las llamadas: con 1 llamada unos 1822 tokens, con 2 unos 3534, con 3 unos 5920 y con 4 unos 9057 |
+| Dónde se va el tiempo de un turno | Foundry chat se lleva el 73 % (291779 ms en 71 llamadas), el MCP el 16 % (64676 ms), y después Cosmos DB (264 llamadas, p95 148 ms), los embeddings y AI Search |
+| Tools con error | 6 errores: 4 de `simulate_installment`, 1 de `get_credit_profile` y 1 de `submit_loan_application`. Todos duraron unos 10 s y `bank-mcp` respondió "El servicio del banco no responde"; suman casi todo el tiempo del MCP. El agente no inventó datos: respondió con el corpus o pidió reintentar |
+
+### ¿Qué optimizarías primero y por qué?
+
+Las llamadas al modelo. Foundry chat se lleva el 73 % del tiempo de los turnos, y cada llamada extra suma unos 2000 tokens y varios segundos: el turno con tool pasó de unos 2 s a 8 s por la segunda llamada. Reducir llamadas (responder sin tool cuando el corpus basta, o resolver tool y respuesta en menos pasos) baja latencia y costo a la vez. En segundo lugar, un timeout más corto o un reintento frente a `bank-mcp`, porque cada falla le cuesta 10 s al turno.
+
+### Conclusión
+
+Cada turno del agente desplegado deja en `appi-team-04` un `chat.turn` con su intención, tokens, llamadas al modelo y tools, y debajo el árbol con Foundry, AI Search, Cosmos DB y el MCP, cada uno con su duración. Con el `operation_Id` se ubica un turno, incluido el error controlado, que queda como `chat.decision` fallida con `not_found`. El workbook muestra que el tiempo y el costo se van en las llamadas al modelo, y que las fallas de tools vienen de `bank-mcp`, que tarda 10 s en responder con error. Los paneles suman todo lo que llega a `appi-team-04`: los turnos del agente en Azure y los de las laptops de todo el equipo, no solo estos cuatro casos.
